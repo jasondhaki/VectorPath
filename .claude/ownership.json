@@ -1,0 +1,214 @@
+{
+  "version": 1,
+  "roles": [
+    "lead",
+    "backend",
+    "data",
+    "domain",
+    "frontend",
+    "reviewer",
+    "qa",
+    "debugger",
+    "scribe"
+  ],
+  "rules": [
+    {
+      "owner": "lead",
+      "paths": [
+        "package.json",
+        "package-lock.json",
+        "AGENTS.md",
+        ".nvmrc",
+        "tsconfig.json",
+        "next-env.d.ts",
+        "next.config.ts",
+        "eslint.config.mjs",
+        "postcss.config.mjs",
+        "components.json",
+        "vercel.json",
+        ".env.example",
+        ".gitignore",
+        ".claude/**",
+        "CLAUDE.md",
+        "claude-agents_astra.md",
+        "types/**",
+        "lib/config/**",
+        "lib/utils.ts",
+        "components/ui/**",
+        "tests/fixtures/contracts/**",
+        "tests/unit/config/**",
+        "tests/unit/agents/**",
+        "scripts/agents/**",
+        "scripts/not-implemented.mjs",
+        ".github/**",
+        "docs/agents/board.md",
+        "docs/agents/handoffs/lead-*"
+      ]
+    },
+    {
+      "owner": "backend",
+      "paths": [
+        "prisma/**",
+        "prisma.config.ts",
+        "proxy.ts",
+        "lib/db/**",
+        "lib/session/**",
+        "lib/cache/**",
+        "lib/parsing/**",
+        "lib/services/**",
+        "app/api/**",
+        "app/**/actions.ts",
+        "scripts/db-size.ts",
+        "scripts/purge-stale.ts",
+        "docker-compose.yml",
+        "tests/unit/db/**",
+        "tests/unit/session/**",
+        "tests/unit/cache/**",
+        "tests/unit/parsing/**",
+        "tests/unit/services/**",
+        "docs/agents/handoffs/backend-*"
+      ]
+    },
+    {
+      "owner": "data",
+      "paths": [
+        "lib/integrations/**",
+        "lib/embeddings/**",
+        "scripts/seed-*.ts",
+        "scripts/check-links.ts",
+        "data/**",
+        "tests/unit/integrations/**",
+        "tests/unit/embeddings/**",
+        "docs/agents/handoffs/data-*"
+      ]
+    },
+    {
+      "owner": "domain",
+      "paths": [
+        "lib/domain/**",
+        "lib/llm/**",
+        "lib/retrieval/**",
+        "tests/unit/domain/**",
+        "tests/unit/llm/**",
+        "tests/unit/retrieval/**",
+        "tests/fixtures/llm/**",
+        "docs/agents/handoffs/domain-*"
+      ]
+    },
+    {
+      "owner": "frontend",
+      "paths": [
+        "app/**",
+        "components/**",
+        "public/**",
+        "tests/unit/components/**",
+        "docs/agents/handoffs/frontend-*"
+      ]
+    },
+    {
+      "owner": "qa",
+      "paths": [
+        "vitest.config.ts",
+        "playwright.config.ts",
+        "tests/setup/**",
+        "tests/integration/**",
+        "tests/e2e/**",
+        "tests/fixtures/synthetic/**",
+        "tests/unit/scripts/**",
+        "tests/unit/setup/**",
+        "eval/**",
+        "scripts/eval.ts",
+        "scripts/eval-capture.ts",
+        "scripts/check-tokens.mjs",
+        "scripts/check-tokens.d.mts",
+        "scripts/check-docs.mjs",
+        "scripts/check-docs.d.mts",
+        "scripts/require-test-db.mjs",
+        "docs/agents/qa/**",
+        "docs/agents/bugs/**",
+        "docs/agents/handoffs/qa-*"
+      ]
+    },
+    {
+      "owner": "reviewer",
+      "paths": [
+        "docs/agents/reviews/**",
+        "docs/agents/handoffs/reviewer-*"
+      ]
+    },
+    {
+      "owner": "debugger",
+      "paths": [
+        "docs/agents/fixes/**",
+        "docs/agents/handoffs/debugger-*"
+      ]
+    },
+    {
+      "owner": "scribe",
+      "paths": [
+        "project-overview_astra.md",
+        "architecture_astra.md",
+        "code-standards_astra.md",
+        "ui-context_astra.md",
+        "ai-workflow-rules_astra.md",
+        "progress-tracker_astra.md",
+        "project-file-tree.md",
+        "README.md",
+        "CHANGELOG.md",
+        "docs/verification/**",
+        "docs/submission/**",
+        "docs/agents/handoffs/scribe-*"
+      ]
+    }
+  ],
+  "exclusions": [
+    {
+      "path": "components/ui/**",
+      "notOwner": "frontend"
+    }
+  ],
+  "grants": [
+    {
+      "role": "lead",
+      "bug": "U01-record",
+      "paths": [
+        "README.md",
+        "CHANGELOG.md",
+        "progress-tracker_astra.md",
+        "project-file-tree.md",
+        "architecture_astra.md",
+        "project-overview_astra.md",
+        "code-standards_astra.md",
+        "ui-context_astra.md",
+        "ai-workflow-rules_astra.md",
+        "docs/verification/**"
+      ],
+      "expires": "2026-10-21T00:00:00.000Z",
+      "note": "Owner directive 2026-10-20 doc sync + U01 record; lead writes scribe docs while vp-scribe is unavailable this session."
+    },
+    {
+      "role": "lead",
+      "bug": "U01-review-fixes",
+      "paths": [
+        "docs/agents/reviews/U01.md",
+        "tests/setup/block-network.mjs",
+        "tests/unit/setup/**",
+        "tests/unit/scripts/**",
+        "scripts/check-docs.mjs",
+        "scripts/check-docs.d.mts"
+      ],
+      "expires": "2026-10-21T00:00:00.000Z",
+      "note": "Lead records the read-only Explore review (vp-reviewer not loaded) and fixes its findings in U01 scaffold files; QA/reviewer paused on these paths until expiry."
+    },
+    {
+      "role": "backend",
+      "bug": "U03-integration-harness",
+      "paths": [
+        "tests/integration/**",
+        "tests/setup/integration-*.ts"
+      ],
+      "expires": "2026-10-22T00:00:00.000Z",
+      "note": "U03 builds the isolated DB harness; QA paused on these paths until expiry or QA acceptance."
+    }
+  ]
+}

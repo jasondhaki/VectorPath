@@ -1,0 +1,20 @@
+{
+  "_note": "Synthetic contract example. Values are the architecture §7.5 worked test vector, not product data.",
+  "requirement": { "id": "onet:2.A.1.a", "kind": "descriptor", "category": "essential", "weight": 0.8, "requiredLevel": 0.6, "sourceRefs": ["onet-31.0:Skills:15-1252.00:2.A.1.a"] },
+  "opportunity": {
+    "scoringVersion": "astra-v1",
+    "soc": "15-1252.00",
+    "opportunity": 56.568542494923804,
+    "fit": { "fit": 0.64, "fitDesc": 0.64, "fitTools": null, "alpha": null, "coverages": [
+      { "requirementId": "onet:2.A.1.a", "direct": 0.64, "neighbor": 0, "effective": 0.64, "state": "partial", "neighborVia": null }
+    ] },
+    "reach": { "reach": 0.5, "weeks": 12, "zoneGap": 0, "zoneKnown": true, "longReach": false },
+    "demand": { "demand": 0.5, "percentile": null, "cohortSize": null, "macro": null, "sectorYears": [], "forecastApplied": false, "support": "Low", "noMarketData": true, "snapshotIds": [], "snapshotDate": null, "forecastVintage": null }
+  },
+  "workload": {
+    "_note": "Resource residual = 1 − 0.64 from the coverage above; onet:2.B.1.a is an unmet transitive prerequisite with no coverage evidence, so residual 1 (§7.3).",
+    "totalHours": 96, "weeklyHours": 8, "weeks": 12,
+    "resourceItems": [{ "resourceId": "res-001", "resourceHours": 225, "residual": 0.36, "hours": 81, "servesRequirementIds": ["onet:2.A.1.a"] }],
+    "uncoveredItems": [{ "requirementId": "onet:2.B.1.a", "category": "transferable", "defaultHours": 15, "residual": 1, "hours": 15 }]
+  }
+}

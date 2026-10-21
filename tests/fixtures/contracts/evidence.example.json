@@ -1,0 +1,10 @@
+{
+  "_note": "Synthetic contract example; fictional text only.",
+  "provenances": [
+    { "kind": "extracted", "quote": "maintained gas compressors", "span": { "start": 12, "end": 38 } },
+    { "kind": "occupation-inferred", "fromRoleSoc": "49-9041.00", "sourceRequirementId": "onet:2.B.3.l" },
+    { "kind": "self-reported" }
+  ],
+  "redaction": { "text": "[email removed] Maintenance technician", "removed": [{ "category": "email", "count": 1 }] },
+  "verification": { "located": [{ "index": 0, "span": { "start": 12, "end": 38 } }], "droppedCount": 2 }
+}

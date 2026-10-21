@@ -1,0 +1,26 @@
+# dependencies / build
+node_modules/
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+next-env.d.ts
+
+# secrets (the committed .env.example is the explicit exception)
+.env
+.env.*
+!.env.example
+
+# local working data
+data/raw/
+data/cache/
+
+# local agent state
+.claude/worktrees/
+.claude/settings.local.json
+.next-e2e/
+
+# generated Prisma client (npm install / npm run db:generate recreates it)
+lib/db/generated/

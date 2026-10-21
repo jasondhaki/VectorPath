@@ -1,0 +1,40 @@
+# Local isolated PostgreSQL + pgvector for VectorPath development and tests (U03, architecture §12.4).
+# Credentials are non-secret local-only defaults; ports bind to loopback only. Never point these at a shared/remote host.
+name: vectorpath
+
+services:
+  db:
+    image: pgvector/pgvector:0.8.1-pg17
+    environment:
+      POSTGRES_USER: vectorpath
+      POSTGRES_PASSWORD: vectorpath_local
+      POSTGRES_DB: vectorpath
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - vectorpath-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vectorpath -d vectorpath"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Disposable integration-test database: separate container, in-memory storage, `_test` name (guarded by tests/setup/integration-db.ts).
+  db-test:
+    image: pgvector/pgvector:0.8.1-pg17
+    environment:
+      POSTGRES_USER: vectorpath
+      POSTGRES_PASSWORD: vectorpath_local
+      POSTGRES_DB: vectorpath_test
+    ports:
+      - "127.0.0.1:55433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vectorpath -d vectorpath_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  vectorpath-dev:

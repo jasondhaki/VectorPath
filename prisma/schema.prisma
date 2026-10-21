@@ -1,0 +1,630 @@
+// VectorPath schema (U03, architecture §5). Reference tables are shared; owner-scoped tables cascade from
+// GuestSession → Profile. Extensions, vector/trigram indexes and CHECK constraints live in migration SQL.
+// Vector columns hold one identity only: gemini-embedding-001, 768-d, SEMANTIC_SIMILARITY, manual L2
+// normalization (architecture §12.3, I13). Query them only through lib/db/vector.ts.
+// P2 entities (OutlookFact, RoleOutlook, InterestResponse) arrive with their own migrations.
+// Private history (Match, Plan, ProfileExperience) keeps occupationCode without an Occupation FK on purpose:
+// reference rebuilds must neither cascade into nor be blocked by owner data; rows are pinned by dataVersion and
+// services (U15/U24) validate codes against the reference version they read.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../lib/db/generated"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────── Shared reference data ─────────────
+
+model SourceManifest {
+  id          String         @id @default(uuid()) @db.Uuid
+  source      String // onet | lightcast | adzuna | worldbank | catalog | ...
+  version     String
+  licenseId   String
+  useDecision String // verified permission summary; never "assumed"
+  checksums   Json
+  counts      Json
+  periods     Json?
+  fetchedAt   DateTime       @db.Timestamptz(3)
+  createdAt   DateTime       @default(now()) @db.Timestamptz(3)
+  runs        IngestionRun[]
+
+  @@unique([source, version])
+}
+
+model IngestionRun {
+  id         String          @id @default(uuid()) @db.Uuid
+  manifestId String?         @db.Uuid
+  manifest   SourceManifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+  command    String
+  status     String // running | completed | failed | interrupted
+  checkpoint Json?
+  processed  Int             @default(0)
+  skipped    Int             @default(0)
+  errors     Int             @default(0)
+  startedAt  DateTime        @default(now()) @db.Timestamptz(3)
+  finishedAt DateTime?       @db.Timestamptz(3)
+
+  @@index([command, startedAt])
+}
+
+model Occupation {
+  code              String                      @id // namespaced, e.g. onet:15-1252.00
+  title             String
+  description       String
+  majorGroup        String
+  minorGroup        String
+  zone              Int? // source preparation zone; null = unknown, never invented
+  zoneScale         String?
+  sector            String? // documented sector or null = explicit unknown
+  green             Boolean                     @default(false)
+  sourceVersion     String
+  embedding         Unsupported("vector(768)")?
+  embeddingIdentity String? // pinned identity of `embedding`; CHECK = REFERENCE_EMBEDDING_IDENTITY, NULL iff embedding NULL
+  titles            OccupationTitle[]
+  requirements      OccupationRequirement[]
+  profiles          OccupationProfile[]
+  edgesFrom         OccupationEdge[]            @relation("EdgeFrom")
+  edgesTo           OccupationEdge[]            @relation("EdgeTo")
+  tasks             OccupationTask[]
+  facts             OccupationalFact[]
+  marketStats       MarketStat[]
+  milestones        MilestoneTemplate[]
+
+  @@index([minorGroup])
+}
+
+model OccupationTitle {
+  id                String                      @id @default(uuid()) @db.Uuid
+  occupationCode    String
+  occupation        Occupation                  @relation(fields: [occupationCode], references: [code], onDelete: Cascade)
+  title             String
+  normalized        String
+  kind              String // primary | alternate | reported
+  sourceVersion     String
+  embedding         Unsupported("vector(768)")?
+  embeddingIdentity String? // pinned identity of `embedding`; CHECK = REFERENCE_EMBEDDING_IDENTITY, NULL iff embedding NULL
+
+  @@unique([occupationCode, normalized])
+  @@index([normalized(ops: raw("gin_trgm_ops"))], type: Gin, map: "OccupationTitle_normalized_trgm_idx")
+}
+
+model OnetElement {
+  id            String                  @id // namespaced, e.g. onet-element:2.A.1.a
+  kind          String // skill | knowledge | ability | work-activity | ...
+  name          String
+  description   String?
+  sourceVersion String
+  requirements  OccupationRequirement[]
+}
+
+model OccupationRequirement {
+  id               String       @id @default(uuid()) @db.Uuid
+  occupationCode   String
+  occupation       Occupation   @relation(fields: [occupationCode], references: [code], onDelete: Cascade)
+  kind             String // descriptor | software
+  elementId        String?
+  element          OnetElement? @relation(fields: [elementId], references: [id], onDelete: Restrict)
+  skillId          String?
+  skill            Skill?       @relation(fields: [skillId], references: [id], onDelete: Restrict)
+  rawImportance    Float?
+  rawLevel         Float?
+  importanceScale  String?
+  levelScale       String?
+  normalizedWeight Float?
+  requiredLevel    Float?
+  suppressed       Boolean      @default(false)
+  notRelevant      Boolean      @default(false)
+  hot              Boolean      @default(false)
+  inDemand         Boolean      @default(false)
+  sourceRecordId   String
+  sourceVersion    String
+
+  @@unique([occupationCode, sourceRecordId, sourceVersion])
+  @@index([elementId])
+  @@index([skillId])
+}
+
+model Skill {
+  id                String                      @id // namespaced: lightcast:..., onet-sw:..., onet-element:...
+  name              String
+  kind              String // software | knowledge | essential | transferable
+  source            String
+  sourceVersion     String
+  embedding         Unsupported("vector(768)")?
+  embeddingIdentity String? // pinned identity of `embedding`; CHECK = REFERENCE_EMBEDDING_IDENTITY, NULL iff embedding NULL
+  aliases           SkillAlias[]
+  neighbors         SkillNeighbor[]             @relation("NeighborFrom")
+  neighborOf        SkillNeighbor[]             @relation("NeighborTo")
+  requirements      OccupationRequirement[]
+  resources         ResourceSkill[]
+}
+
+model SkillAlias {
+  id         String @id @default(uuid()) @db.Uuid
+  skillId    String
+  skill      Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  alias      String
+  normalized String
+  source     String
+  provenance Json
+
+  @@unique([normalized, skillId])
+  @@index([normalized(ops: raw("gin_trgm_ops"))], type: Gin, map: "SkillAlias_normalized_trgm_idx")
+}
+
+model SkillNeighbor {
+  skillId     String
+  skill       Skill  @relation("NeighborFrom", fields: [skillId], references: [id], onDelete: Cascade)
+  neighborId  String
+  neighbor    Skill  @relation("NeighborTo", fields: [neighborId], references: [id], onDelete: Cascade)
+  similarity  Float
+  dataVersion String
+
+  @@id([skillId, neighborId, dataVersion])
+}
+
+model OccupationProfile {
+  id             String     @id @default(uuid()) @db.Uuid
+  occupationCode String
+  occupation     Occupation @relation(fields: [occupationCode], references: [code], onDelete: Cascade)
+  dataVersion    String
+  schemaVersion  String
+  requirements   Json
+
+  @@unique([occupationCode, dataVersion])
+}
+
+model OccupationEdge {
+  id           String     @id @default(uuid()) @db.Uuid
+  fromCode     String
+  from         Occupation @relation("EdgeFrom", fields: [fromCode], references: [code], onDelete: Cascade)
+  toCode       String
+  to           Occupation @relation("EdgeTo", fields: [toCode], references: [code], onDelete: Cascade)
+  kind         String // related | similarity
+  tier         String?
+  similarity   Float?
+  graphVersion String
+  provenance   Json
+  workload     Json
+
+  @@unique([fromCode, toCode, kind, graphVersion])
+  @@index([graphVersion, fromCode])
+}
+
+model OccupationTask {
+  id             String     @id @default(uuid()) @db.Uuid
+  occupationCode String
+  occupation     Occupation @relation(fields: [occupationCode], references: [code], onDelete: Cascade)
+  taskId         String
+  statement      String
+  sourceVersion  String
+
+  @@unique([occupationCode, taskId, sourceVersion])
+}
+
+model OccupationalFact {
+  id             String     @id @default(uuid()) @db.Uuid
+  occupationCode String
+  occupation     Occupation @relation(fields: [occupationCode], references: [code], onDelete: Cascade)
+  kind           String // education | interests | work-context | ...
+  payload        Json
+  sourceVersion  String
+  observedPeriod String?
+
+  @@unique([occupationCode, kind, sourceVersion])
+}
+
+model MarketStat {
+  id             String     @id @default(uuid()) @db.Uuid
+  occupationCode String
+  occupation     Occupation @relation(fields: [occupationCode], references: [code], onDelete: Cascade)
+  country        String
+  query          String
+  filters        Json
+  endpoint       String
+  count          Int? // null = not observed; a recorded zero is valid data
+  meanSalary     Float? // provider-supplied mean; never labeled a median
+  currency       String?
+  mode           String // live | cached | fixture
+  licenseId      String
+  dataVersion    String
+  observedAt     DateTime   @db.Timestamptz(3)
+  fetchedAt      DateTime   @db.Timestamptz(3)
+
+  @@unique([occupationCode, country, query, dataVersion])
+  @@index([country, dataVersion])
+}
+
+model MacroIndicator {
+  id           String   @id @default(uuid()) @db.Uuid
+  country      String // ISO3: BGD | IND | GBR | USA
+  indicator    String
+  year         Int
+  value        Float? // percent as published; null = not reported, never 0
+  source       String
+  vintage      String
+  isProjection Boolean  @default(false)
+  fetchedAt    DateTime @db.Timestamptz(3)
+
+  @@unique([country, indicator, year, vintage])
+}
+
+model SectorSignal {
+  id           String   @id @default(uuid()) @db.Uuid
+  country      String
+  sector       String
+  dataVersion  String
+  value        Float
+  supportFacts Json
+  computedAt   DateTime @db.Timestamptz(3)
+
+  @@unique([country, sector, dataVersion])
+}
+
+model LearningResource {
+  id                  String          @id
+  provider            String
+  url                 String
+  title               String
+  level               String?
+  language            String
+  hours               Float
+  hoursSupplied       Boolean // false = estimated
+  accessNote          String
+  paidCertificate     Boolean         @default(false)
+  freeAccessCheckedAt DateTime?       @db.Timestamptz(3)
+  linkStatus          String // reachable | dead | blocked-unknown | auth-required | unchecked
+  linkCheckedAt       DateTime?       @db.Timestamptz(3)
+  catalogVersion      String
+  skills              ResourceSkill[]
+}
+
+model ResourceSkill {
+  resourceId String
+  resource   LearningResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  skillId    String
+  skill      Skill            @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  level      Float
+
+  @@id([resourceId, skillId])
+}
+
+model SkillPrereq {
+  id             String @id @default(uuid()) @db.Uuid
+  fromId         String // prerequisite canonical requirement ID
+  toId           String // dependent canonical requirement ID
+  kind           String // manual | suggested
+  confidence     Float?
+  catalogVersion String
+
+  @@unique([fromId, toId, catalogVersion])
+}
+
+model MilestoneTemplate {
+  id             String      @id
+  occupationCode String?
+  occupation     Occupation? @relation(fields: [occupationCode], references: [code], onDelete: Cascade)
+  title          String
+  description    String
+  version        String
+}
+
+model DemoScenario {
+  id             String   @id @default(uuid()) @db.Uuid
+  personaId      String
+  country        String
+  preferenceHash String
+  dataVersion    String
+  scoringVersion String
+  promptVersion  String
+  artifacts      Json
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([personaId, country, preferenceHash, dataVersion, scoringVersion, promptVersion])
+}
+
+// ───────────── Owner-scoped data (cascade from GuestSession → Profile) ─────────────
+
+model GuestSession {
+  id             String        @id @default(uuid()) @db.Uuid
+  tokenHash      String        @unique // hash only; the raw token is never stored
+  consentVersion String?
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  expiresAt      DateTime      @db.Timestamptz(3)
+  revokedAt      DateTime?     @db.Timestamptz(3)
+  profiles       Profile[]
+  analysisRuns   AnalysisRun[]
+
+  @@index([expiresAt])
+}
+
+// Exactly one of sessionId (private guest profile) or demoKey (immutable public persona) — CHECK in migration.
+model Profile {
+  id           String              @id @default(uuid()) @db.Uuid
+  sessionId    String?             @db.Uuid
+  session      GuestSession?       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  demoKey      String?             @unique
+  country      String
+  weeklyHours  Int                 @default(8) // CHECK 1–40
+  preferences  Json
+  revision     Int                 @default(0)
+  lastActiveAt DateTime            @default(now()) @db.Timestamptz(3)
+  createdAt    DateTime            @default(now()) @db.Timestamptz(3)
+  cvText       CvText?
+  experiences  ProfileExperience[]
+  educations   ProfileEducation[]
+  skills       ProfileSkill[]
+  matchRuns    MatchRun[]
+  plans        Plan[]
+  progress     PlanItemProgress[]
+  pathRuns     PathRun[]
+  jobTargets   JobTarget[]
+  analysisRuns AnalysisRun[]
+  llmCache     LlmCache[]
+
+  @@unique([id, sessionId])
+  @@index([sessionId])
+}
+
+model CvText {
+  id            String   @id @default(uuid()) @db.Uuid
+  profileId     String   @unique @db.Uuid
+  profile       Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  text          String // minimized/redacted text only; never file bytes
+  contentHash   String
+  parserVersion String
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+}
+
+model ProfileExperience {
+  id                String   @id @default(uuid()) @db.Uuid
+  profileId         String   @db.Uuid
+  profile           Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  title             String
+  employer          String?
+  years             Float?
+  occupationCode    String? // confirmed mapping; candidates live in mappingCandidates
+  mappingCandidates Json
+  provenance        String // extracted | self-reported
+  quoteStart        Int?
+  quoteEnd          Int?
+  confirmed         Boolean  @default(false)
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([profileId])
+}
+
+model ProfileEducation {
+  id         String   @id @default(uuid()) @db.Uuid
+  profileId  String   @db.Uuid
+  profile    Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  label      String
+  provenance String // extracted | self-reported
+  quoteStart Int?
+  quoteEnd   Int?
+  confirmed  Boolean  @default(false)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([profileId])
+}
+
+// Software skills and O*NET descriptors (kind) share one owner-scoped table; canonicalId null = unresolved.
+model ProfileSkill {
+  id                String    @id @default(uuid()) @db.Uuid
+  profileId         String    @db.Uuid
+  profile           Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  kind              String // software | descriptor
+  canonicalId       String?
+  rawName           String
+  level             Float? // accepted evidence/inference level in [0,1]
+  overrideLevel     Float? // user override wins, including lower
+  provenance        String // extracted | occupation-inferred | self-reported
+  evidence          Json
+  mappingCandidates Json
+  confirmed         Boolean   @default(false)
+  deletedAt         DateTime? @db.Timestamptz(3) // tombstone so inference cannot restore a removed item
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([profileId])
+}
+
+model MatchRun {
+  id              String   @id @default(uuid()) @db.Uuid
+  profileId       String   @db.Uuid
+  profile         Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileRevision Int
+  country         String
+  scoringVersion  String
+  dataVersion     String
+  inputHash       String
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  matches         Match[]
+
+  @@unique([profileId, inputHash])
+}
+
+model Match {
+  id             String   @id @default(uuid()) @db.Uuid
+  matchRunId     String   @db.Uuid
+  matchRun       MatchRun @relation(fields: [matchRunId], references: [id], onDelete: Cascade)
+  occupationCode String
+  rank           Int
+  held           Boolean  @default(false)
+  opportunity    Float
+  fit            Float
+  reach          Float
+  demand         Float
+  breakdown      Json // coverage, workload and support facts at full precision
+
+  @@unique([matchRunId, occupationCode])
+}
+
+enum PlanTargetKind {
+  occupation
+  job
+}
+
+// Discriminated target: occupation → occupationCode; job → jobTargetId owned by the same profile (composite FK).
+model Plan {
+  id             String         @id @default(uuid()) @db.Uuid
+  profileId      String         @db.Uuid
+  profile        Profile        @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  targetKind     PlanTargetKind
+  occupationCode String?
+  jobTargetId    String?        @db.Uuid
+  jobTarget      JobTarget?     @relation(fields: [jobTargetId, profileId], references: [id, profileId], onDelete: Cascade)
+  inputHash      String
+  catalogVersion String
+  totalHours     Float
+  payload        Json
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+
+  @@unique([profileId, inputHash])
+}
+
+// Progress survives regeneration: keyed by profile, target and stable item key, not by plan row.
+// Job-target progress carries jobTargetId with a composite owner FK, so it cascades with (and cannot cross) its JD.
+model PlanItemProgress {
+  id          String     @id @default(uuid()) @db.Uuid
+  profileId   String     @db.Uuid
+  profile     Profile    @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  jobTargetId String?    @db.Uuid
+  jobTarget   JobTarget? @relation(fields: [jobTargetId, profileId], references: [id, profileId], onDelete: Cascade)
+  targetKey   String // occupation:<code> | job:<jobTargetId> — CHECK ties it to jobTargetId
+  itemKey     String // stable resource/requirement version key
+  status      String // not-started | in-progress | done
+  updatedAt   DateTime   @updatedAt @db.Timestamptz(3)
+
+  @@unique([profileId, targetKey, itemKey])
+}
+
+model PathRun {
+  id              String   @id @default(uuid()) @db.Uuid
+  profileId       String   @db.Uuid
+  profile         Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileRevision Int
+  graphVersion    String
+  targetKey       String
+  lens            String
+  constraints     Json
+  paths           Json
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([profileId])
+}
+
+model JobTarget {
+  id           String             @id @default(uuid()) @db.Uuid
+  profileId    String             @db.Uuid
+  profile      Profile            @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  redactedText String
+  revision     Int                @default(0)
+  confirmedAt  DateTime?          @db.Timestamptz(3)
+  createdAt    DateTime           @default(now()) @db.Timestamptz(3)
+  requirements JobRequirement[]
+  plans        Plan[]
+  progress     PlanItemProgress[]
+
+  @@unique([id, profileId])
+  @@index([profileId])
+}
+
+model JobRequirement {
+  id           String    @id @default(uuid()) @db.Uuid
+  jobTargetId  String    @db.Uuid
+  profileId    String    @db.Uuid
+  jobTarget    JobTarget @relation(fields: [jobTargetId, profileId], references: [id, profileId], onDelete: Cascade)
+  canonicalId  String? // null = unresolved
+  rawText      String
+  quoteStart   Int
+  quoteEnd     Int
+  required     Boolean
+  level        Float
+  levelAssumed Boolean // true = disclosed 0.50 model assumption, not an employer fact
+  confirmed    Boolean   @default(false)
+
+  @@index([jobTargetId])
+}
+
+// ───────────── Operational ─────────────
+
+model AnalysisRun {
+  id              String       @id @default(uuid()) @db.Uuid
+  sessionId       String       @db.Uuid
+  session         GuestSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  profileId       String?      @db.Uuid
+  profile         Profile?     @relation(fields: [profileId, sessionId], references: [id, sessionId], onDelete: Cascade)
+  idempotencyKey  String
+  stage           String
+  failureCategory String?
+  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
+  expiresAt       DateTime     @db.Timestamptz(3)
+
+  @@unique([sessionId, idempotencyKey])
+}
+
+// Public cache only: keys never contain CV text, tokens or user queries.
+model ApiCache {
+  key       String   @id
+  provider  String
+  payload   Json
+  mode      String // live | fixture
+  fetchedAt DateTime @db.Timestamptz(3) // original fetch time, kept on cache reads
+  expiresAt DateTime @db.Timestamptz(3)
+}
+
+model ApiBudget {
+  provider    String
+  window      String // minute | day | week | month
+  windowStart DateTime @db.Timestamptz(3)
+  used        Int      @default(0)
+
+  @@id([provider, window, windowStart])
+}
+
+model RateLimit {
+  key         String // HMAC-hashed subject + action
+  windowStart DateTime @db.Timestamptz(3)
+  count       Int      @default(0)
+  expiresAt   DateTime @db.Timestamptz(3)
+
+  @@id([key, windowStart])
+  @@index([expiresAt])
+}
+
+// Personal entries (scope = personal) must carry an owning profile — CHECK in migration.
+// Keys are unique per owner; general rows (profileId NULL) are unique via a partial index in migration SQL.
+model LlmCache {
+  id            String   @id @default(uuid()) @db.Uuid
+  key           String
+  scope         String // personal | general
+  profileId     String?  @db.Uuid
+  profile       Profile? @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  task          String
+  model         String
+  promptVersion String
+  payload       Json
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt     DateTime @db.Timestamptz(3)
+
+  @@unique([profileId, key])
+}
+
+// Telemetry: counts/timing/status only — no prompts, completions, profile IDs or content.
+model LlmCall {
+  id             String   @id @default(uuid()) @db.Uuid
+  task           String
+  provider       String
+  model          String
+  promptVersion  String
+  status         String
+  latencyMs      Int
+  inputTokens    Int?
+  outputTokens   Int?
+  fallbackReason String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+}

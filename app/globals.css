@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+/* Sole palette (ui-context_astra.md §2). Only this file may hold colour values; components use the
+   semantic utilities below. Contrast is computed from these values in tests/unit/components/contrast.test.ts. */
+:root {
+  --night-0: #0b171d;
+  --night-1: #0f1d24;
+  --night-2: #14262f;
+  --night-3: #1a303b;
+  --line-1: #2a4553; /* decorative only: 1.36–1.80:1 on night surfaces */
+  --line-2: #3a5d70; /* < 3:1 on every surface: never the sole selection indicator; pair with wash/text/icon */
+  --line-input: #5b8296;
+  --paper: #f1ece2;
+  --paper-2: #c3cdd1;
+  --paper-3: #93a6ae;
+  --signal: #ff8a3d;
+  --signal-hover: #ffa164;
+  --signal-ink: #10181d;
+  --signal-wash: #353431; /* no danger text on this wash (4.49:1 < 4.5) */
+  --focus: #ffb27a;
+  --have: #5ed6a0;
+  --partial: #e8c35a;
+  --transfer: #5bb6f5;
+  --build: #ff8fa3;
+  --projected: #b39dff;
+  --danger: #ff6b6b;
+  --scrim: rgb(5 12 16 / 0.72);
+  --route-1: #ff8a3d;
+  --route-2: #3cc8b4;
+  --route-3: #e8c35a;
+  --route-4: #b39dff;
+  --route-5: #5bb6f5;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  /* Drop Tailwind's default palette (red-500, white, black…): only the tokens below generate colour utilities. */
+  --color-*: initial;
+
+  /* shadcn mappings (ui-context §2). Accent is neutral, not orange. */
+  --color-background: var(--night-1);
+  --color-foreground: var(--paper);
+  --color-card: var(--night-2);
+  --color-card-foreground: var(--paper);
+  --color-popover: var(--night-3);
+  --color-popover-foreground: var(--paper);
+  --color-secondary: var(--night-3);
+  --color-secondary-foreground: var(--paper);
+  --color-accent: var(--night-3);
+  --color-accent-foreground: var(--paper);
+  --color-muted: var(--night-3);
+  --color-muted-foreground: var(--paper-3);
+  --color-primary: var(--signal);
+  --color-primary-hover: var(--signal-hover);
+  --color-primary-foreground: var(--signal-ink);
+  --color-destructive: var(--danger);
+  --color-border: var(--line-1);
+  --color-input: var(--line-input);
+  --color-ring: var(--focus);
+  --color-chart-1: var(--route-1);
+  --color-chart-2: var(--route-2);
+  --color-chart-3: var(--route-3);
+  --color-chart-4: var(--route-4);
+  --color-chart-5: var(--route-5);
+
+  /* Additional semantic classes (ui-context §2). */
+  --color-canvas: var(--night-0);
+  --color-raised: var(--night-3);
+  --color-foreground-secondary: var(--paper-2);
+  --color-line-strong: var(--line-2);
+  --color-selection: var(--signal-wash);
+  --color-scrim: var(--scrim);
+  --color-have: var(--have);
+  --color-partial: var(--partial);
+  --color-transfer: var(--transfer);
+  --color-build: var(--build);
+  --color-projected: var(--projected);
+  --color-route-1: var(--route-1);
+  --color-route-2: var(--route-2);
+  --color-route-3: var(--route-3);
+  --color-route-4: var(--route-4);
+  --color-route-5: var(--route-5);
+
+  /* Locally packaged fonts (app/layout.tsx imports @fontsource); system fallbacks, no remote fetch.
+     Noto Sans Bengali is a permitted local fallback only for catalog titles. */
+  --font-sans: "Barlow", "Noto Sans Bengali", ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-heading: "Barlow Semi Condensed", "Barlow", "Noto Sans Bengali", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+  }
+
+  body {
+    background: var(--night-1);
+    color: var(--paper);
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-heading);
+  }
+
+  /* Two-pixel visible ring with offset on every keyboard-focused element (ui-context §8). */
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
